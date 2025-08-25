@@ -2,333 +2,103 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Harita — Sokak Rotası Sim</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Harita Navigasyon</title>
 
-<!-- Leaflet -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b0e14">
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-:root{
-  --bg:#0f1115; --paper:#12151c; --ink:#e7e9ee; --muted:#9aa3af;
-  --accent:#3b82f6; --border:#1f2330; --soft:#181c25;
-  --topbar-h:64px; --bottombar-h:78px;
+html,body{margin:0;height:100%;background:#0b0e14;font-family:sans-serif}
+#map{position:absolute;top:0;bottom:0;left:0;right:0}
+
+/* Üst yeşil panel */
+.topnav{
+  position:fixed;top:0;left:0;right:0;
+  background:#05603a;color:#fff;padding:10px 16px;
+  display:flex;flex-direction:column;z-index:1000
 }
-*{box-sizing:border-box} html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--ink);
-  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;
-  padding-top:calc(var(--topbar-h) + env(safe-area-inset-top,0px));
-  padding-top:calc(var(--topbar-h) + constant(safe-area-inset-top,0px));
-  padding-bottom:calc(var(--bottombar-h) + env(safe-area-inset-bottom,0px));
-  padding-bottom:calc(var(--bottombar-h) + constant(safe-area-inset-bottom,0px));
+.topnav .dir{font-weight:bold;font-size:16px}
+.topnav .next{font-size:13px;margin-top:2px}
+
+/* Alt siyah panel */
+.bottomnav{
+  position:fixed;bottom:0;left:0;right:0;
+  background:#111;color:#fff;padding:12px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  z-index:1000
+}
+.bottomnav .time{color:#fbbf24;font-weight:bold;font-size:18px}
+.bottomnav .info{font-size:14px;color:#bbb}
+.bottomnav .exit{
+  background:#dc2626;color:#fff;border:none;
+  border-radius:6px;padding:6px 12px;font-weight:bold;cursor:pointer
 }
 
-/* ÜST BAR (uygulama gibi) */
-.topbar{
-  position:fixed; z-index:50; top:0; left:0; right:0;
-  height:calc(var(--topbar-h) + env(safe-area-inset-top,0px));
-  height:calc(var(--topbar-h) + constant(safe-area-inset-top,0px));
-  padding-top:env(safe-area-inset-top,0px);
-  padding-top:constant(safe-area-inset-top,0px);
-  background:#0e121b; border-bottom:1px solid var(--border);
-  display:flex; align-items:flex-end;
+/* Araç oku */
+.vehicle{
+  width:0;height:0;
+  border-left:12px solid transparent;
+  border-right:12px solid transparent;
+  border-top:20px solid #3b82f6;
 }
-.row{height:var(--topbar-h); width:100%; max-width:860px; margin:0 auto;
-  display:flex; align-items:center; justify-content:space-between; padding:0 16px}
-.brand{display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px}
-.brand .logo{height:26px; width:auto}
-.status{color:var(--muted); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%}
-
-/* ALT BAR */
-.bottombar{
-  position:fixed; z-index:40;
-  bottom:calc(env(safe-area-inset-bottom,0px) + 8px);
-  bottom:calc(constant(safe-area-inset-bottom,0px) + 8px);
-  left:10px; right:10px; height:58px; border-radius:14px;
-  background:var(--paper); border:1px solid var(--border);
-  display:flex; align-items:center; gap:10px; padding:0 10px;
-  box-shadow:0 10px 30px rgba(0,0,0,.35);
+.vehicle-icon{
+  background:rgba(255,255,255,0.8);
+  border-radius:50%;padding:4px
 }
-.bottombar .btn{
-  appearance:none; border:1px solid var(--border); background:var(--soft);
-  color:var(--ink); padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer;
-}
-.bottombar .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
-.bottombar .right{margin-left:auto; display:flex; align-items:center; gap:10px; color:var(--muted)}
-.range{accent-color:var(--accent)}
-label.small{font-size:12px; color:var(--muted)}
-
-/* HARİTA */
-#map{position:fixed; inset:calc(var(--topbar-h) + env(safe-area-inset-top,0px)) 0 calc(var(--bottombar-h) + 8px + env(safe-area-inset-bottom,0px)) 0}
-.leaflet-container{background:#0b0e14}
-
-/* Marker stilleri */
-.dest{width:18px;height:18px;background:#22c55e;border:2px solid #e6f9ed;border-radius:50%}
-.start{width:18px;height:18px;background:#f59e0b;border:2px solid #fff2d6;border-radius:50%}
-
-/* “ok” simüle konum */
-.heading-pin{
-  width:22px; height:22px; border-radius:50%;
-  border:2px solid #cbe1ff; background:#3b82f6;
-  box-shadow:0 0 0 2px rgba(59,130,246,.25);
-}
-.heading-arrow{
-  position:absolute; top:-8px; left:50%;
-  width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent;
-  border-bottom:10px solid #3b82f6; transform:translateX(-50%);
-}
-.legend{
-  position:fixed; right:12px; top:calc(var(--topbar-h) + env(safe-area-inset-top,0px) + 12px);
-  background:rgba(18,21,28,.9); border:1px solid var(--border); color:var(--ink);
-  padding:8px 10px; border-radius:10px; font-size:12px
-}
-.infopill{
-  position:fixed; left:12px; top:calc(var(--topbar-h) + env(safe-area-inset-top,0px) + 12px);
-  background:rgba(18,21,28,.9); border:1px solid var(--border); color:var(--ink);
-  padding:8px 10px; border-radius:10px; font-size:12px; max-width:60%;
-}
-.turn{
-  display:inline-flex; align-items:center; gap:6px;
-}
-.turn b{font-weight:800}
 </style>
 </head>
 <body>
 
-<!-- ÜST BAR -->
-<header class="topbar">
-  <div class="row">
-    <div class="brand">
-      <img class="logo" src="https://dummyimage.com/60x26/ffffff/000000&text=M" alt="">
-      Harita
-    </div>
-    <div class="status" id="status">Konum bekleniyor…</div>
-  </div>
-</header>
+<div id="map"></div>
 
-<!-- HARİTA -->
-<div id="map" aria-label="harita"></div>
-<div class="legend">Turuncu: Başlangıç • Yeşil: Hedef • Mavi: Rota üzerinde hareket</div>
-<div class="infopill" id="infopill" style="display:none"></div>
+<div class="topnav">
+  <div class="dir" id="dir">100 m sonra sağa dön</div>
+  <div class="next" id="next">R. Luz Soriano · Cunhal das Bolas</div>
+</div>
 
-<!-- ALT BAR -->
-<nav class="bottombar">
-  <button id="btnLocate" class="btn">Konum</button>
-  <button id="btnPick" class="btn">Hedef Seç</button>
-  <button id="btnRoute" class="btn">Rota</button>
-  <button id="btnStart" class="btn primary">Başlat</button>
-  <button id="btnStop" class="btn">Durdur</button>
-  <button id="btnReset" class="btn">Sıfırla</button>
-  <div class="right">
-    <label class="small">Takip
-      <input type="checkbox" id="chkFollow" checked>
-    </label>
-    <label class="small">Hız
-      <input type="range" id="rangeSpeed" class="range" min="3" max="25" step="1" value="8">
-    </label>
+<div class="bottomnav">
+  <div>
+    <div class="time" id="time">4 dk.</div>
+    <div class="info" id="info">700 m · 21:23</div>
   </div>
-</nav>
+  <button class="exit">Çıkış</button>
+</div>
 
 <script>
-/* ====== Gerçek yol rotası ile sokaklardan ilerleme (OSRM) ====== */
-let map, startMarker, destMarker, movingMarker, routeLine, picking=false;
-let animId=null, route=[], routeLen=0, segIndex=0, segT=0; // polyline segment animasyonu
-let follow=true, steps=[], stepIndex=0;
+// Harita
+const map = L.map('map',{zoomControl:false}).setView([38.7169,-9.1431],16);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20}).addTo(map);
 
-const statusEl = document.getElementById('status');
-const pillEl   = document.getElementById('infopill');
-const speedEl  = document.getElementById('rangeSpeed');
-const chkFollow= document.getElementById('chkFollow');
-function setStatus(m){ statusEl.textContent=m; }
+// Basit rota simülasyonu (manuel polyline)
+const route = [
+  [38.7169,-9.1431],
+  [38.7175,-9.1425],
+  [38.7180,-9.1420],
+  [38.7186,-9.1410]
+];
+L.polyline(route,{color:'#3b82f6',weight:6}).addTo(map);
 
-/* Harita */
-map = L.map('map', { zoomControl:false });
-L.control.zoom({ position:'topright' }).addTo(map);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 20, attribution: '© OpenStreetMap'
-}).addTo(map);
-
-/* Icon helpers */
-function makeDivIcon(html){ return L.divIcon({ className:'', html, iconSize:[22,22], iconAnchor:[11,11] }); }
-const iconStart = L.divIcon({className:'start', iconSize:[18,18]});
-const iconDest  = L.divIcon({className:'dest',  iconSize:[18,18]});
-function headingIcon(angleDeg=0){
-  const el = `
-    <div class="heading-pin" style="transform:rotate(${angleDeg}deg)">
-      <div class="heading-arrow"></div>
-    </div>`;
-  return makeDivIcon(el);
-}
-
-/* Varsayılan: İstiklal Caddesi yakınlarından başla, hedefi Galata Kulesi yap */
-const DEFAULT_START = [41.03678, 28.98556]; // İstiklal
-const DEFAULT_DEST  = [41.02566, 28.97438]; // Galata Kulesi
-placeStart(DEFAULT_START); map.setView(DEFAULT_START, 16);
-placeDest(DEFAULT_DEST);
-
-/* Konum al */
-function locate(){
-  setStatus('Konum alınıyor…');
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(ok=>{
-      const c=[ok.coords.latitude, ok.coords.longitude];
-      placeStart(c); map.setView(c, 16); setStatus('Konum hazır');
-    }, _=>{
-      setStatus('Konum izni yok — varsayılan kullanılıyor');
-    }, {enableHighAccuracy:true, timeout:5000});
-  }else{
-    setStatus('Geolocation yok — varsayılan kullanılıyor');
-  }
-}
-
-/* Yerleştiriciler */
-function placeStart(latlng){
-  if(startMarker) map.removeLayer(startMarker);
-  startMarker = L.marker(latlng, {icon:iconStart, draggable:true}).addTo(map);
-  startMarker.on('dragend', ()=> { setStatus('Başlangıç taşındı'); });
-}
-function placeDest(latlng){
-  if(destMarker) map.removeLayer(destMarker);
-  destMarker = L.marker(latlng, {icon:iconDest, draggable:true}).addTo(map);
-  destMarker.on('dragend', ()=> { setStatus('Hedef taşındı'); });
-}
-
-/* OSRM ile rota çek (driving, steps+geometry) */
-async function buildRouteOSRM(){
-  if(!startMarker || !destMarker){ setStatus('Başlangıç ve hedef gerekli'); return; }
-  const A = startMarker.getLatLng(), B = destMarker.getLatLng();
-  // OSRM: lon,lat;lon,lat  (dikkat: lon önce!)
-  const url = `https://router.project-osrm.org/route/v1/driving/${A.lng},${A.lat};${B.lng},${B.lat}?overview=full&geometries=geojson&steps=true`;
-  setStatus('Rota aranıyor…');
-  try{
-    const r = await fetch(url);
-    const j = await r.json();
-    if(!j.routes?.length){ setStatus('Rota bulunamadı'); return; }
-    const routeGeo = j.routes[0].geometry.coordinates; // [lon,lat]
-    steps = j.routes[0].legs[0].steps || [];
-    // GeoJSON'u Leaflet LatLng dizisine çevir
-    route = routeGeo.map(([lon,lat])=> L.latLng(lat,lon));
-    // çiz
-    if(routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(route, {color:'#3b82f6', weight:5, opacity:0.85}).addTo(map);
-    map.fitBounds(routeLine.getBounds(), {padding:[60,60]});
-    // hareket edeni hazırla
-    if(movingMarker) map.removeLayer(movingMarker);
-    movingMarker = L.marker(route[0], {icon:headingIcon(0)}).addTo(map);
-    routeLen = route.length; segIndex=0; segT=0; stepIndex=0;
-    setStatus('Rota hazır — Başlat’a bas');
-    showNextInstruction();
-  }catch(e){
-    console.error(e);
-    setStatus('Rota servisine erişilemedi');
-  }
-}
-
-/* Bir sonraki dönüş talimatını göster (basit) */
-function showNextInstruction(){
-  if(!steps?.length) { pillEl.style.display='none'; return; }
-  if(stepIndex >= steps.length){ pillEl.style.display='none'; return; }
-  const s = steps[stepIndex];
-  const name = s.name || 'yol';
-  const maneuver = (s.maneuver?.type || '') + ' ' + (s.maneuver?.modifier || '');
-  pillEl.innerHTML = `<span class="turn"><b>${maneuver.trim()}</b> · ${name}</span>`;
-  pillEl.style.display='block';
-}
-
-/* Segment animasyonu (rota üzerindeki noktalar arasında) */
-function dist(a,b){ return map.distance(a,b); }
-function bearing(a,b){
-  const φ1=a.lat*Math.PI/180, φ2=b.lat*Math.PI/180;
-  const Δλ=(b.lng-a.lng)*Math.PI/180;
-  const y=Math.sin(Δλ)*Math.cos(φ2);
-  const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
-  let θ=Math.atan2(y,x)*180/Math.PI;
-  return (θ+360)%360;
-}
-
-function stepToNext(){
-  // hız ~ m/sn; frame aralığına göre adım
-  const v = Number(speedEl.value); // m/s
-  let i = segIndex, t = segT;
-  if(i >= routeLen-1){ stop(); setStatus('Varış'); pillEl.style.display='none'; return; }
-
-  const A = route[i], B = route[i+1];
-  const d = Math.max(1, dist(A,B));       // metre
-  const step = v * (1/30);                // ~30fps varsayımı
-  const u = step/d;
-  t += u;
-
-  if(t >= 1){
-    // seg bitti
-    segIndex++; t = 0;
-    // step ilerleme (yaklaşık): polylinedaki bu noktayı geçen manevraları işaretle
-    // (OSRM steps’in geometry’si ayrı olurdu; basitçe adım say)
-    if(stepIndex < steps.length-1) stepIndex++;
-    showNextInstruction();
-  }
-
-  // yeni konum
-  const lat = A.lat + (B.lat - A.lat) * t;
-  const lng = A.lng + (B.lng - A.lng) * t;
-  const pos = L.latLng(lat,lng);
-  movingMarker.setLatLng(pos);
-
-  // yön oku
-  const ang = bearing(A,B);
-  movingMarker.setIcon(headingIcon(ang));
-
-  // takip kamera
-  if(follow) map.panTo(pos, {animate:false});
-
-  // durum yazısı
-  setStatus(`İlerliyor · hız ~${v} m/sn`);
-
-  segT = t;
-  animId = requestAnimationFrame(stepToNext);
-}
-
-function start(){
-  if(!routeLen){ setStatus('Önce Rota yap'); return; }
-  if(animId) cancelAnimationFrame(animId);
-  animId = requestAnimationFrame(stepToNext);
-}
-function stop(){
-  if(animId){ cancelAnimationFrame(animId); animId=null; setStatus('Duraklatıldı'); }
-}
-function resetAll(){
-  stop();
-  [startMarker,destMarker,movingMarker,routeLine].forEach(m=> m && map.removeLayer(m));
-  startMarker=destMarker=movingMarker=routeLine=null;
-  route=[]; routeLen=0; segIndex=0; segT=0; steps=[]; stepIndex=0;
-  placeStart(DEFAULT_START); placeDest(DEFAULT_DEST);
-  map.setView(DEFAULT_START, 16);
-  setStatus('Sıfırlandı — Konum al veya Hedef seç');
-  pillEl.style.display='none';
-}
-
-/* Etkileşimler */
-document.getElementById('btnLocate').onclick = locate;
-document.getElementById('btnPick').onclick = ()=>{
-  picking = !picking;
-  setStatus(picking?'Haritaya dokun: hedef koy':'Hedef seçme kapalı');
-  document.getElementById('btnPick').classList.toggle('primary', picking);
-};
-map.on('click', e=>{
-  if(!picking) return;
-  placeDest(e.latlng);
-  picking=false;
-  document.getElementById('btnPick').classList.remove('primary');
-  setStatus('Hedef ayarlandı — Rota’ya bas');
+// Araç oku
+const vehicleIcon = L.divIcon({
+  className:'', html:'<div class="vehicle-icon"><div class="vehicle"></div></div>',
+  iconSize:[24,24], iconAnchor:[12,12]
 });
-document.getElementById('btnRoute').onclick = buildRouteOSRM;
-document.getElementById('btnStart').onclick = start;
-document.getElementById('btnStop').onclick  = stop;
-document.getElementById('btnReset').onclick = resetAll;
-chkFollow.onchange = ()=> { follow = chkFollow.checked; };
+let marker = L.marker(route[0],{icon:vehicleIcon}).addTo(map);
 
-/* Açılışta durum */
-setStatus('Konum bekleniyor… Başlangıç ve hedef hazır; “Rota” → “Başlat”.');
+// Basit animasyon
+let i=0;
+function move(){
+  if(i>=route.length){return;}
+  marker.setLatLng(route[i]);
+  map.panTo(route[i]);
+  i++;
+  setTimeout(move,1500);
+}
+move();
 </script>
 </body>
 </html>
