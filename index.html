@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Harita — Sahne Sim</title>
+<title>Harita — Sokak Rotası Sim</title>
 
-<!-- Leaflet (anahtarsız, OSM) -->
+<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -17,14 +17,14 @@
 }
 *{box-sizing:border-box} html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);
-  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;
   padding-top:calc(var(--topbar-h) + env(safe-area-inset-top,0px));
   padding-top:calc(var(--topbar-h) + constant(safe-area-inset-top,0px));
   padding-bottom:calc(var(--bottombar-h) + env(safe-area-inset-bottom,0px));
   padding-bottom:calc(var(--bottombar-h) + constant(safe-area-inset-bottom,0px));
 }
 
-/* ÜST BAR */
+/* ÜST BAR (uygulama gibi) */
 .topbar{
   position:fixed; z-index:50; top:0; left:0; right:0;
   height:calc(var(--topbar-h) + env(safe-area-inset-top,0px));
@@ -34,11 +34,11 @@ body{margin:0;background:var(--bg);color:var(--ink);
   background:#0e121b; border-bottom:1px solid var(--border);
   display:flex; align-items:flex-end;
 }
-.row{height:var(--topbar-h); width:100%; max-width:800px; margin:0 auto;
+.row{height:var(--topbar-h); width:100%; max-width:860px; margin:0 auto;
   display:flex; align-items:center; justify-content:space-between; padding:0 16px}
 .brand{display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px}
 .brand .logo{height:26px; width:auto}
-.status{color:var(--muted); font-size:13px}
+.status{color:var(--muted); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:60%}
 
 /* ALT BAR */
 .bottombar{
@@ -64,14 +64,34 @@ label.small{font-size:12px; color:var(--muted)}
 .leaflet-container{background:#0b0e14}
 
 /* Marker stilleri */
-.dot{width:16px;height:16px;background:#3b82f6;border:2px solid #cbe1ff;border-radius:50%}
 .dest{width:18px;height:18px;background:#22c55e;border:2px solid #e6f9ed;border-radius:50%}
 .start{width:18px;height:18px;background:#f59e0b;border:2px solid #fff2d6;border-radius:50%}
+
+/* “ok” simüle konum */
+.heading-pin{
+  width:22px; height:22px; border-radius:50%;
+  border:2px solid #cbe1ff; background:#3b82f6;
+  box-shadow:0 0 0 2px rgba(59,130,246,.25);
+}
+.heading-arrow{
+  position:absolute; top:-8px; left:50%;
+  width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent;
+  border-bottom:10px solid #3b82f6; transform:translateX(-50%);
+}
 .legend{
   position:fixed; right:12px; top:calc(var(--topbar-h) + env(safe-area-inset-top,0px) + 12px);
   background:rgba(18,21,28,.9); border:1px solid var(--border); color:var(--ink);
   padding:8px 10px; border-radius:10px; font-size:12px
 }
+.infopill{
+  position:fixed; left:12px; top:calc(var(--topbar-h) + env(safe-area-inset-top,0px) + 12px);
+  background:rgba(18,21,28,.9); border:1px solid var(--border); color:var(--ink);
+  padding:8px 10px; border-radius:10px; font-size:12px; max-width:60%;
+}
+.turn{
+  display:inline-flex; align-items:center; gap:6px;
+}
+.turn b{font-weight:800}
 </style>
 </head>
 <body>
@@ -80,8 +100,7 @@ label.small{font-size:12px; color:var(--muted)}
 <header class="topbar">
   <div class="row">
     <div class="brand">
-      <!-- logon varsa değiştir -->
-      <img class="logo" src="https://dummyimage.com/60x26/ffffff/000000&text=m" alt="">
+      <img class="logo" src="https://dummyimage.com/60x26/ffffff/000000&text=M" alt="">
       Harita
     </div>
     <div class="status" id="status">Konum bekleniyor…</div>
@@ -90,12 +109,14 @@ label.small{font-size:12px; color:var(--muted)}
 
 <!-- HARİTA -->
 <div id="map" aria-label="harita"></div>
-<div class="legend">Turuncu: Başlangıç • Yeşil: Hedef • Mavi: Konum</div>
+<div class="legend">Turuncu: Başlangıç • Yeşil: Hedef • Mavi: Rota üzerinde hareket</div>
+<div class="infopill" id="infopill" style="display:none"></div>
 
 <!-- ALT BAR -->
 <nav class="bottombar">
   <button id="btnLocate" class="btn">Konum</button>
   <button id="btnPick" class="btn">Hedef Seç</button>
+  <button id="btnRoute" class="btn">Rota</button>
   <button id="btnStart" class="btn primary">Başlat</button>
   <button id="btnStop" class="btn">Durdur</button>
   <button id="btnReset" class="btn">Sıfırla</button>
@@ -104,117 +125,186 @@ label.small{font-size:12px; color:var(--muted)}
       <input type="checkbox" id="chkFollow" checked>
     </label>
     <label class="small">Hız
-      <input type="range" id="rangeSpeed" class="range" min="5" max="60" step="1" value="25">
+      <input type="range" id="rangeSpeed" class="range" min="3" max="25" step="1" value="8">
     </label>
   </div>
 </nav>
 
 <script>
-/* ====== Basit sahte navigasyon simülasyonu ====== */
-let map, startMarker, destMarker, movingMarker, routeLine, picking = false;
-let animId = null, route = [], routeLen = 0, t = 0; // 0..1 arası param
-let follow = true;
+/* ====== Gerçek yol rotası ile sokaklardan ilerleme (OSRM) ====== */
+let map, startMarker, destMarker, movingMarker, routeLine, picking=false;
+let animId=null, route=[], routeLen=0, segIndex=0, segT=0; // polyline segment animasyonu
+let follow=true, steps=[], stepIndex=0;
 
 const statusEl = document.getElementById('status');
+const pillEl   = document.getElementById('infopill');
 const speedEl  = document.getElementById('rangeSpeed');
 const chkFollow= document.getElementById('chkFollow');
+function setStatus(m){ statusEl.textContent=m; }
 
-function setStatus(msg){ statusEl.textContent = msg; }
-
-/* Haritayı kur */
+/* Harita */
 map = L.map('map', { zoomControl:false });
 L.control.zoom({ position:'topright' }).addTo(map);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19, attribution: '© OpenStreetMap'
+  maxZoom: 20, attribution: '© OpenStreetMap'
 }).addTo(map);
 
-/* Yardımcılar */
-const toLatLng = (a,b)=> (Array.isArray(a)? L.latLng(a[0],a[1]) : L.latLng(a,b));
-function dist(a,b){ return map.distance(a,b); }
-function lerp(a,b,u){ return L.latLng(a.lat+(b.lat-a.lat)*u, a.lng+(b.lng-a.lng)*u); }
-function buildRoute(a,b){
-  // Basit bir iki-nokta rotası (doğrusal). İstersen düğüm sayısını artırabilirsin.
-  const n = Math.max(2, Math.floor(dist(a,b)/30)); // ~30 m adımla
-  let pts = [];
-  for(let i=0;i<=n;i++){ pts.push( lerp(a,b,i/n) ); }
-  return pts;
+/* Icon helpers */
+function makeDivIcon(html){ return L.divIcon({ className:'', html, iconSize:[22,22], iconAnchor:[11,11] }); }
+const iconStart = L.divIcon({className:'start', iconSize:[18,18]});
+const iconDest  = L.divIcon({className:'dest',  iconSize:[18,18]});
+function headingIcon(angleDeg=0){
+  const el = `
+    <div class="heading-pin" style="transform:rotate(${angleDeg}deg)">
+      <div class="heading-arrow"></div>
+    </div>`;
+  return makeDivIcon(el);
 }
 
-/* Marker fabrikaları */
-function makeIcon(cls){ return L.divIcon({className:cls, iconSize:[18,18]}); }
-const iconStart = makeIcon('start');
-const iconDest  = makeIcon('dest');
-const iconDot   = makeIcon('dot');
+/* Varsayılan: İstiklal Caddesi yakınlarından başla, hedefi Galata Kulesi yap */
+const DEFAULT_START = [41.03678, 28.98556]; // İstiklal
+const DEFAULT_DEST  = [41.02566, 28.97438]; // Galata Kulesi
+placeStart(DEFAULT_START); map.setView(DEFAULT_START, 16);
+placeDest(DEFAULT_DEST);
 
-/* Başlangıç konumu (izin alınır; olmazsa Taksim) */
+/* Konum al */
 function locate(){
   setStatus('Konum alınıyor…');
   if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(ok=> {
-      const c = [ok.coords.latitude, ok.coords.longitude];
+    navigator.geolocation.getCurrentPosition(ok=>{
+      const c=[ok.coords.latitude, ok.coords.longitude];
       placeStart(c); map.setView(c, 16); setStatus('Konum hazır');
-    }, err=>{
-      const c = [41.0369, 28.9858]; // Taksim
-      placeStart(c); map.setView(c, 15);
-      setStatus('Konum izni yok — Taksim kullanıldı');
+    }, _=>{
+      setStatus('Konum izni yok — varsayılan kullanılıyor');
     }, {enableHighAccuracy:true, timeout:5000});
   }else{
-    const c = [41.0369, 28.9858]; placeStart(c); map.setView(c, 15);
-    setStatus('Geolocation yok — Taksim');
+    setStatus('Geolocation yok — varsayılan kullanılıyor');
   }
 }
 
+/* Yerleştiriciler */
 function placeStart(latlng){
   if(startMarker) map.removeLayer(startMarker);
   startMarker = L.marker(latlng, {icon:iconStart, draggable:true}).addTo(map);
-  startMarker.on('dragend', ()=> { if(!movingMarker) setStatus('Başlangıç taşındı'); });
+  startMarker.on('dragend', ()=> { setStatus('Başlangıç taşındı'); });
 }
-
 function placeDest(latlng){
   if(destMarker) map.removeLayer(destMarker);
   destMarker = L.marker(latlng, {icon:iconDest, draggable:true}).addTo(map);
-  destMarker.on('dragend', ()=> { drawRoute(); });
+  destMarker.on('dragend', ()=> { setStatus('Hedef taşındı'); });
 }
 
-function drawRoute(){
-  if(!startMarker || !destMarker) return;
-  const a = startMarker.getLatLng(), b = destMarker.getLatLng();
-  route = buildRoute(a,b);
-  if(routeLine) map.removeLayer(routeLine);
-  routeLine = L.polyline(route, {color:'#3b82f6', weight:4, opacity:0.8}).addTo(map);
-  map.fitBounds(routeLine.getBounds(), {padding:[50,50]});
-  routeLen = route.length; t = 0;
-  // hareket eden nokta
-  if(movingMarker) map.removeLayer(movingMarker);
-  movingMarker = L.marker(route[0], {icon:iconDot}).addTo(map);
+/* OSRM ile rota çek (driving, steps+geometry) */
+async function buildRouteOSRM(){
+  if(!startMarker || !destMarker){ setStatus('Başlangıç ve hedef gerekli'); return; }
+  const A = startMarker.getLatLng(), B = destMarker.getLatLng();
+  // OSRM: lon,lat;lon,lat  (dikkat: lon önce!)
+  const url = `https://router.project-osrm.org/route/v1/driving/${A.lng},${A.lat};${B.lng},${B.lat}?overview=full&geometries=geojson&steps=true`;
+  setStatus('Rota aranıyor…');
+  try{
+    const r = await fetch(url);
+    const j = await r.json();
+    if(!j.routes?.length){ setStatus('Rota bulunamadı'); return; }
+    const routeGeo = j.routes[0].geometry.coordinates; // [lon,lat]
+    steps = j.routes[0].legs[0].steps || [];
+    // GeoJSON'u Leaflet LatLng dizisine çevir
+    route = routeGeo.map(([lon,lat])=> L.latLng(lat,lon));
+    // çiz
+    if(routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(route, {color:'#3b82f6', weight:5, opacity:0.85}).addTo(map);
+    map.fitBounds(routeLine.getBounds(), {padding:[60,60]});
+    // hareket edeni hazırla
+    if(movingMarker) map.removeLayer(movingMarker);
+    movingMarker = L.marker(route[0], {icon:headingIcon(0)}).addTo(map);
+    routeLen = route.length; segIndex=0; segT=0; stepIndex=0;
+    setStatus('Rota hazır — Başlat’a bas');
+    showNextInstruction();
+  }catch(e){
+    console.error(e);
+    setStatus('Rota servisine erişilemedi');
+  }
+}
+
+/* Bir sonraki dönüş talimatını göster (basit) */
+function showNextInstruction(){
+  if(!steps?.length) { pillEl.style.display='none'; return; }
+  if(stepIndex >= steps.length){ pillEl.style.display='none'; return; }
+  const s = steps[stepIndex];
+  const name = s.name || 'yol';
+  const maneuver = (s.maneuver?.type || '') + ' ' + (s.maneuver?.modifier || '');
+  pillEl.innerHTML = `<span class="turn"><b>${maneuver.trim()}</b> · ${name}</span>`;
+  pillEl.style.display='block';
+}
+
+/* Segment animasyonu (rota üzerindeki noktalar arasında) */
+function dist(a,b){ return map.distance(a,b); }
+function bearing(a,b){
+  const φ1=a.lat*Math.PI/180, φ2=b.lat*Math.PI/180;
+  const Δλ=(b.lng-a.lng)*Math.PI/180;
+  const y=Math.sin(Δλ)*Math.cos(φ2);
+  const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+  let θ=Math.atan2(y,x)*180/Math.PI;
+  return (θ+360)%360;
+}
+
+function stepToNext(){
+  // hız ~ m/sn; frame aralığına göre adım
+  const v = Number(speedEl.value); // m/s
+  let i = segIndex, t = segT;
+  if(i >= routeLen-1){ stop(); setStatus('Varış'); pillEl.style.display='none'; return; }
+
+  const A = route[i], B = route[i+1];
+  const d = Math.max(1, dist(A,B));       // metre
+  const step = v * (1/30);                // ~30fps varsayımı
+  const u = step/d;
+  t += u;
+
+  if(t >= 1){
+    // seg bitti
+    segIndex++; t = 0;
+    // step ilerleme (yaklaşık): polylinedaki bu noktayı geçen manevraları işaretle
+    // (OSRM steps’in geometry’si ayrı olurdu; basitçe adım say)
+    if(stepIndex < steps.length-1) stepIndex++;
+    showNextInstruction();
+  }
+
+  // yeni konum
+  const lat = A.lat + (B.lat - A.lat) * t;
+  const lng = A.lng + (B.lng - A.lng) * t;
+  const pos = L.latLng(lat,lng);
+  movingMarker.setLatLng(pos);
+
+  // yön oku
+  const ang = bearing(A,B);
+  movingMarker.setIcon(headingIcon(ang));
+
+  // takip kamera
+  if(follow) map.panTo(pos, {animate:false});
+
+  // durum yazısı
+  setStatus(`İlerliyor · hız ~${v} m/sn`);
+
+  segT = t;
+  animId = requestAnimationFrame(stepToNext);
 }
 
 function start(){
-  if(!routeLen){ setStatus('Önce hedef seçin'); return; }
+  if(!routeLen){ setStatus('Önce Rota yap'); return; }
   if(animId) cancelAnimationFrame(animId);
-  const sp = Number(speedEl.value); // m/sn yaklaşık
-  const stepMeters = sp/10; // ~ her frame 100ms varsayımı
-  function tick(){
-    if(t>=routeLen-1){ setStatus('Varış'); animId=null; return; }
-    const p = movingMarker.getLatLng();
-    let next = route[Math.ceil(t+1)];
-    const d = dist(p,next);
-    if(d<stepMeters){ t += 1; }
-    const u = Math.min(1, stepMeters/Math.max(1,d));
-    const newPos = lerp(p,next,u);
-    movingMarker.setLatLng(newPos);
-    if(follow) map.panTo(newPos,{animate:false});
-    animId = requestAnimationFrame(tick);
-  }
-  setStatus('Navigasyon başlatıldı');
-  animId = requestAnimationFrame(tick);
+  animId = requestAnimationFrame(stepToNext);
 }
-function stop(){ if(animId){ cancelAnimationFrame(animId); animId=null; setStatus('Duraklatıldı'); } }
+function stop(){
+  if(animId){ cancelAnimationFrame(animId); animId=null; setStatus('Duraklatıldı'); }
+}
 function resetAll(){
   stop();
   [startMarker,destMarker,movingMarker,routeLine].forEach(m=> m && map.removeLayer(m));
-  startMarker=destMarker=movingMarker=routeLine=null; route=[]; routeLen=0; t=0;
-  setStatus('Sıfırlandı — Konum alabilirsiniz');
+  startMarker=destMarker=movingMarker=routeLine=null;
+  route=[]; routeLen=0; segIndex=0; segT=0; steps=[]; stepIndex=0;
+  placeStart(DEFAULT_START); placeDest(DEFAULT_DEST);
+  map.setView(DEFAULT_START, 16);
+  setStatus('Sıfırlandı — Konum al veya Hedef seç');
+  pillEl.style.display='none';
 }
 
 /* Etkileşimler */
@@ -226,17 +316,19 @@ document.getElementById('btnPick').onclick = ()=>{
 };
 map.on('click', e=>{
   if(!picking) return;
-  placeDest(e.latlng); drawRoute(); picking=false;
+  placeDest(e.latlng);
+  picking=false;
   document.getElementById('btnPick').classList.remove('primary');
-  setStatus('Hedef ayarlandı — Başlatabilirsiniz');
+  setStatus('Hedef ayarlandı — Rota’ya bas');
 });
+document.getElementById('btnRoute').onclick = buildRouteOSRM;
 document.getElementById('btnStart').onclick = start;
 document.getElementById('btnStop').onclick  = stop;
 document.getElementById('btnReset').onclick = resetAll;
 chkFollow.onchange = ()=> { follow = chkFollow.checked; };
 
-/* İlk açılışta konum dene */
-locate();
+/* Açılışta durum */
+setStatus('Konum bekleniyor… Başlangıç ve hedef hazır; “Rota” → “Başlat”.');
 </script>
 </body>
 </html>
