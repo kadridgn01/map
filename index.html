@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Harita — Sahne Sim</title>
+
+<!-- Leaflet (anahtarsız, OSM) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+:root{
+  --bg:#0f1115; --paper:#12151c; --ink:#e7e9ee; --muted:#9aa3af;
+  --accent:#3b82f6; --border:#1f2330; --soft:#181c25;
+  --topbar-h:64px; --bottombar-h:78px;
+}
+*{box-sizing:border-box} html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif;
+  padding-top:calc(var(--topbar-h) + env(safe-area-inset-top,0px));
+  padding-top:calc(var(--topbar-h) + constant(safe-area-inset-top,0px));
+  padding-bottom:calc(var(--bottombar-h) + env(safe-area-inset-bottom,0px));
+  padding-bottom:calc(var(--bottombar-h) + constant(safe-area-inset-bottom,0px));
+}
+
+/* ÜST BAR */
+.topbar{
+  position:fixed; z-index:50; top:0; left:0; right:0;
+  height:calc(var(--topbar-h) + env(safe-area-inset-top,0px));
+  height:calc(var(--topbar-h) + constant(safe-area-inset-top,0px));
+  padding-top:env(safe-area-inset-top,0px);
+  padding-top:constant(safe-area-inset-top,0px);
+  background:#0e121b; border-bottom:1px solid var(--border);
+  display:flex; align-items:flex-end;
+}
+.row{height:var(--topbar-h); width:100%; max-width:800px; margin:0 auto;
+  display:flex; align-items:center; justify-content:space-between; padding:0 16px}
+.brand{display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px}
+.brand .logo{height:26px; width:auto}
+.status{color:var(--muted); font-size:13px}
+
+/* ALT BAR */
+.bottombar{
+  position:fixed; z-index:40;
+  bottom:calc(env(safe-area-inset-bottom,0px) + 8px);
+  bottom:calc(constant(safe-area-inset-bottom,0px) + 8px);
+  left:10px; right:10px; height:58px; border-radius:14px;
+  background:var(--paper); border:1px solid var(--border);
+  display:flex; align-items:center; gap:10px; padding:0 10px;
+  box-shadow:0 10px 30px rgba(0,0,0,.35);
+}
+.bottombar .btn{
+  appearance:none; border:1px solid var(--border); background:var(--soft);
+  color:var(--ink); padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer;
+}
+.bottombar .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+.bottombar .right{margin-left:auto; display:flex; align-items:center; gap:10px; color:var(--muted)}
+.range{accent-color:var(--accent)}
+label.small{font-size:12px; color:var(--muted)}
+
+/* HARİTA */
+#map{position:fixed; inset:calc(var(--topbar-h) + env(safe-area-inset-top,0px)) 0 calc(var(--bottombar-h) + 8px + env(safe-area-inset-bottom,0px)) 0}
+.leaflet-container{background:#0b0e14}
+
+/* Marker stilleri */
+.dot{width:16px;height:16px;background:#3b82f6;border:2px solid #cbe1ff;border-radius:50%}
+.dest{width:18px;height:18px;background:#22c55e;border:2px solid #e6f9ed;border-radius:50%}
+.start{width:18px;height:18px;background:#f59e0b;border:2px solid #fff2d6;border-radius:50%}
+.legend{
+  position:fixed; right:12px; top:calc(var(--topbar-h) + env(safe-area-inset-top,0px) + 12px);
+  background:rgba(18,21,28,.9); border:1px solid var(--border); color:var(--ink);
+  padding:8px 10px; border-radius:10px; font-size:12px
+}
+</style>
+</head>
+<body>
+
+<!-- ÜST BAR -->
+<header class="topbar">
+  <div class="row">
+    <div class="brand">
+      <!-- logon varsa değiştir -->
+      <img class="logo" src="https://dummyimage.com/60x26/ffffff/000000&text=m" alt="">
+      Harita
+    </div>
+    <div class="status" id="status">Konum bekleniyor…</div>
+  </div>
+</header>
+
+<!-- HARİTA -->
+<div id="map" aria-label="harita"></div>
+<div class="legend">Turuncu: Başlangıç • Yeşil: Hedef • Mavi: Konum</div>
+
+<!-- ALT BAR -->
+<nav class="bottombar">
+  <button id="btnLocate" class="btn">Konum</button>
+  <button id="btnPick" class="btn">Hedef Seç</button>
+  <button id="btnStart" class="btn primary">Başlat</button>
+  <button id="btnStop" class="btn">Durdur</button>
+  <button id="btnReset" class="btn">Sıfırla</button>
+  <div class="right">
+    <label class="small">Takip
+      <input type="checkbox" id="chkFollow" checked>
+    </label>
+    <label class="small">Hız
+      <input type="range" id="rangeSpeed" class="range" min="5" max="60" step="1" value="25">
+    </label>
+  </div>
+</nav>
+
+<script>
+/* ====== Basit sahte navigasyon simülasyonu ====== */
+let map, startMarker, destMarker, movingMarker, routeLine, picking = false;
+let animId = null, route = [], routeLen = 0, t = 0; // 0..1 arası param
+let follow = true;
+
+const statusEl = document.getElementById('status');
+const speedEl  = document.getElementById('rangeSpeed');
+const chkFollow= document.getElementById('chkFollow');
+
+function setStatus(msg){ statusEl.textContent = msg; }
+
+/* Haritayı kur */
+map = L.map('map', { zoomControl:false });
+L.control.zoom({ position:'topright' }).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '© OpenStreetMap'
+}).addTo(map);
+
+/* Yardımcılar */
+const toLatLng = (a,b)=> (Array.isArray(a)? L.latLng(a[0],a[1]) : L.latLng(a,b));
+function dist(a,b){ return map.distance(a,b); }
+function lerp(a,b,u){ return L.latLng(a.lat+(b.lat-a.lat)*u, a.lng+(b.lng-a.lng)*u); }
+function buildRoute(a,b){
+  // Basit bir iki-nokta rotası (doğrusal). İstersen düğüm sayısını artırabilirsin.
+  const n = Math.max(2, Math.floor(dist(a,b)/30)); // ~30 m adımla
+  let pts = [];
+  for(let i=0;i<=n;i++){ pts.push( lerp(a,b,i/n) ); }
+  return pts;
+}
+
+/* Marker fabrikaları */
+function makeIcon(cls){ return L.divIcon({className:cls, iconSize:[18,18]}); }
+const iconStart = makeIcon('start');
+const iconDest  = makeIcon('dest');
+const iconDot   = makeIcon('dot');
+
+/* Başlangıç konumu (izin alınır; olmazsa Taksim) */
+function locate(){
+  setStatus('Konum alınıyor…');
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(ok=> {
+      const c = [ok.coords.latitude, ok.coords.longitude];
+      placeStart(c); map.setView(c, 16); setStatus('Konum hazır');
+    }, err=>{
+      const c = [41.0369, 28.9858]; // Taksim
+      placeStart(c); map.setView(c, 15);
+      setStatus('Konum izni yok — Taksim kullanıldı');
+    }, {enableHighAccuracy:true, timeout:5000});
+  }else{
+    const c = [41.0369, 28.9858]; placeStart(c); map.setView(c, 15);
+    setStatus('Geolocation yok — Taksim');
+  }
+}
+
+function placeStart(latlng){
+  if(startMarker) map.removeLayer(startMarker);
+  startMarker = L.marker(latlng, {icon:iconStart, draggable:true}).addTo(map);
+  startMarker.on('dragend', ()=> { if(!movingMarker) setStatus('Başlangıç taşındı'); });
+}
+
+function placeDest(latlng){
+  if(destMarker) map.removeLayer(destMarker);
+  destMarker = L.marker(latlng, {icon:iconDest, draggable:true}).addTo(map);
+  destMarker.on('dragend', ()=> { drawRoute(); });
+}
+
+function drawRoute(){
+  if(!startMarker || !destMarker) return;
+  const a = startMarker.getLatLng(), b = destMarker.getLatLng();
+  route = buildRoute(a,b);
+  if(routeLine) map.removeLayer(routeLine);
+  routeLine = L.polyline(route, {color:'#3b82f6', weight:4, opacity:0.8}).addTo(map);
+  map.fitBounds(routeLine.getBounds(), {padding:[50,50]});
+  routeLen = route.length; t = 0;
+  // hareket eden nokta
+  if(movingMarker) map.removeLayer(movingMarker);
+  movingMarker = L.marker(route[0], {icon:iconDot}).addTo(map);
+}
+
+function start(){
+  if(!routeLen){ setStatus('Önce hedef seçin'); return; }
+  if(animId) cancelAnimationFrame(animId);
+  const sp = Number(speedEl.value); // m/sn yaklaşık
+  const stepMeters = sp/10; // ~ her frame 100ms varsayımı
+  function tick(){
+    if(t>=routeLen-1){ setStatus('Varış'); animId=null; return; }
+    const p = movingMarker.getLatLng();
+    let next = route[Math.ceil(t+1)];
+    const d = dist(p,next);
+    if(d<stepMeters){ t += 1; }
+    const u = Math.min(1, stepMeters/Math.max(1,d));
+    const newPos = lerp(p,next,u);
+    movingMarker.setLatLng(newPos);
+    if(follow) map.panTo(newPos,{animate:false});
+    animId = requestAnimationFrame(tick);
+  }
+  setStatus('Navigasyon başlatıldı');
+  animId = requestAnimationFrame(tick);
+}
+function stop(){ if(animId){ cancelAnimationFrame(animId); animId=null; setStatus('Duraklatıldı'); } }
+function resetAll(){
+  stop();
+  [startMarker,destMarker,movingMarker,routeLine].forEach(m=> m && map.removeLayer(m));
+  startMarker=destMarker=movingMarker=routeLine=null; route=[]; routeLen=0; t=0;
+  setStatus('Sıfırlandı — Konum alabilirsiniz');
+}
+
+/* Etkileşimler */
+document.getElementById('btnLocate').onclick = locate;
+document.getElementById('btnPick').onclick = ()=>{
+  picking = !picking;
+  setStatus(picking?'Haritaya dokun: hedef koy':'Hedef seçme kapalı');
+  document.getElementById('btnPick').classList.toggle('primary', picking);
+};
+map.on('click', e=>{
+  if(!picking) return;
+  placeDest(e.latlng); drawRoute(); picking=false;
+  document.getElementById('btnPick').classList.remove('primary');
+  setStatus('Hedef ayarlandı — Başlatabilirsiniz');
+});
+document.getElementById('btnStart').onclick = start;
+document.getElementById('btnStop').onclick  = stop;
+document.getElementById('btnReset').onclick = resetAll;
+chkFollow.onchange = ()=> { follow = chkFollow.checked; };
+
+/* İlk açılışta konum dene */
+locate();
+</script>
+</body>
+</html>
