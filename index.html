@@ -11,7 +11,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+  // ADIM TAKİBİ
+let currentStepIdx = 0;    // şu anki rota adımı
+let lastTurnBucket = null; // son gösterilen mesafe kovası
+
+</script>
 
 <style>
   :root{
